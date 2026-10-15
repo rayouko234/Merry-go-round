@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "417158567483",
+    "project_id": "mt-project-ce4c0",
+    "storage_bucket": "mt-project-ce4c0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:417158567483:android:f19a4b6f1f36176539ae1e",
+        "android_client_info": {
+          "package_name": "com.example.merrygoround"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA5ZE1CiPc9G7AEPASvM_geMSUXS-smu0I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
