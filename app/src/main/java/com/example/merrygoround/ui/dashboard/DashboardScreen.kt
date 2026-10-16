@@ -87,12 +87,23 @@ fun DashboardScreen(
 
         state.noGroups ->
             Column(Modifier.statusBarsPadding()) {
-                EmptyState(
-                    title = "No savings groups yet",
-                    message = "Create your own group or join one with an invitation code to start saving together.",
-                    actionText = "Create a group",
-                    onAction = onCreateGroup
-                )
+                if (state.pendingGroups.isNotEmpty()) {
+                    EmptyState(
+                        title = "Waiting for approval",
+                        message = "Your request to join " +
+                            state.pendingGroups.joinToString { it.name } +
+                            " is pending. The group owner must approve it before you can see the group.",
+                        actionText = "Refresh",
+                        onAction = onRefresh
+                    )
+                } else {
+                    EmptyState(
+                        title = "No savings groups yet",
+                        message = "Create your own group or join one with an invitation code to start saving together.",
+                        actionText = "Create a group",
+                        onAction = onCreateGroup
+                    )
+                }
                 androidx.compose.material3.TextButton(onClick = onJoinGroup) {
                     androidx.compose.material3.Text("or join with a code", color = BrandGreen)
                 }

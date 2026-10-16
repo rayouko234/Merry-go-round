@@ -32,7 +32,9 @@ data class SavingsGroup(
     val payoutOrderMethod: PayoutOrderMethod,
     val joinPolicy: JoinPolicy,
     val invitationExpiryDays: Int,
-    val createdAtMillis: Long = 0L
+    val createdAtMillis: Long = 0L,
+    /** The current user's membership state in this group (PENDING = awaiting owner approval). */
+    val membershipStatus: MembershipStatus = MembershipStatus.ACTIVE
 ) {
     val isForming: Boolean get() = status == GroupStatus.FORMING
     val hasSpace: Boolean get() = memberCount < memberLimit

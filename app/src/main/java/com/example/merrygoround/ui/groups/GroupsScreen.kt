@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.example.merrygoround.core.common.Money
 import com.example.merrygoround.domain.model.SavingsGroup
 import com.example.merrygoround.ui.components.CardSection
+import com.example.merrygoround.domain.model.MembershipStatus
 import com.example.merrygoround.ui.components.ChipTone
 import com.example.merrygoround.ui.components.EmptyState
 import com.example.merrygoround.ui.components.ErrorState
@@ -106,7 +107,12 @@ fun GroupsScreen(
                         }
                     }
                     items(state.groups, key = { it.id }) { group ->
-                        GroupCard(group = group, onClick = { onOpenGroup(group.id) })
+                        GroupCard(
+                            group = group,
+                            onClick = {
+                                if (group.membershipStatus == MembershipStatus.ACTIVE) onOpenGroup(group.id)
+                            }
+                        )
                     }
                 }
             }
@@ -135,9 +141,21 @@ private fun GroupCard(group: SavingsGroup, onClick: () -> Unit) {
                     )
                 }
             }
-            StatusChip(
-                group.status.label(),
-                if (group.status.name == "ACTIVE") ChipTone.SUCCESS else ChipTone.INFO
+            if (group.membershipStatus == MembershipStatus.PENDING) {
+                StatusChip(group.membershipStatus.label(), ChipTone.PENDING)
+            } else {
+                StatusChip(
+                    group.status.label(),
+                    if (group.status.name == "ACTIVE") ChipTone.SUCCESS else ChipTone.INFO
+                )
+            }
+        }
+        if (group.membershipStatus == MembershipStatus.PENDING) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Waiting for the group owner to approve your request.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
             )
         }
         Spacer(Modifier.height(12.dp))

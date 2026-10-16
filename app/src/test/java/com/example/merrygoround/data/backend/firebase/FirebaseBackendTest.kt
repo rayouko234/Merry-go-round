@@ -147,6 +147,27 @@ class FirebaseBackendTest {
     }
 
     @Test
+    fun pendingJoinerSeesGroupAsPendingUntilApproved() = runBlocking {
+        val owner = register("Owner Pend", "owner-p@ex.com", "0711111150")
+        val group = createDefaultGroup(owner)
+        asUser(owner)
+        backend.updateGroupSettings(group.id, null, null, null, JoinPolicy.APPROVAL_REQUIRED).ok()
+        val code = backend.getInvitation(group.id).ok().code
+
+        val joiner = register("Member Pend", "m-pend@ex.com", "0711111151")
+        asUser(joiner)
+        assertEquals(MembershipStatus.PENDING, backend.joinGroup(code).ok().status)
+        val listed = backend.listMyGroups().ok().single()
+        assertEquals(MembershipStatus.PENDING, listed.membershipStatus)
+
+        asUser(owner)
+        backend.decideMembership(group.id, joiner.id, approve = true).ok()
+        asUser(joiner)
+        assertEquals(MembershipStatus.ACTIVE, backend.listMyGroups().ok().single().membershipStatus)
+        assertEquals(group.id, backend.getGroup(group.id).ok().id)
+    }
+
+    @Test
     fun nonMemberCannotReadGroupData() = runBlocking {
         val owner = register("Owner Four", "owner4@ex.com", "0711111117")
         val group = createDefaultGroup(owner)

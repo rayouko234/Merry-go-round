@@ -9,6 +9,7 @@ import com.example.merrygoround.data.repository.GroupRepository
 import com.example.merrygoround.domain.model.ActivityEntry
 import com.example.merrygoround.domain.model.Contribution
 import com.example.merrygoround.domain.model.ContributionStatus
+import com.example.merrygoround.domain.model.MembershipStatus
 import com.example.merrygoround.domain.model.SavingsGroup
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,7 +49,8 @@ class ActivityViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val groups = (groupRepository.listMyGroups() as? AppResult.Success)?.data ?: emptyList()
+            val groups = (groupRepository.listMyGroups() as? AppResult.Success)?.data
+                ?.filter { it.membershipStatus == MembershipStatus.ACTIVE } ?: emptyList()
             when (val activity = activityRepository.recent(200)) {
                 is AppResult.Failure -> _uiState.update {
                     it.copy(isLoading = false, errorMessage = activity.message, groups = groups)

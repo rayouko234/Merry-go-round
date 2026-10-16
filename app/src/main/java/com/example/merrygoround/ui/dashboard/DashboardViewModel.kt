@@ -8,6 +8,7 @@ import com.example.merrygoround.data.repository.ContributionRepository
 import com.example.merrygoround.data.repository.GroupRepository
 import com.example.merrygoround.domain.model.ActivityEntry
 import com.example.merrygoround.domain.model.DashboardSummary
+import com.example.merrygoround.domain.model.MembershipStatus
 import com.example.merrygoround.domain.model.SavingsGroup
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +24,9 @@ data class DashboardUiState(
     val recentActivity: List<ActivityEntry> = emptyList(),
     val errorMessage: String? = null,
     /** True when the user has no groups at all — show onboarding CTAs. */
-    val noGroups: Boolean = false
+    val noGroups: Boolean = false,
+    /** Groups the user asked to join that are still awaiting owner approval. */
+    val pendingGroups: List<SavingsGroup> = emptyList()
 )
 
 /**
@@ -51,7 +54,8 @@ class DashboardViewModel(
                     it.copy(isLoading = false, errorMessage = groupsResult.message)
                 }
                 is AppResult.Success -> {
-                    val groups = groupsResult.data
+                    val groups = groupsResult.data.filter { it.membershipStatus == MembershipStatus.ACTIVE }
+                    val pending = groupsResult.data.filter { it.membershipStatus == MembershipStatus.PENDING }
                     if (groups.isEmpty()) {
                         _uiState.update {
                             it.copy(
@@ -60,7 +64,8 @@ class DashboardViewModel(
                                 selectedGroupId = null,
                                 summary = null,
                                 recentActivity = emptyList(),
-                                noGroups = true
+                                noGroups = true,
+                                pendingGroups = pending
                             )
                         }
                         return@launch
@@ -68,6 +73,7 @@ class DashboardViewModel(
                     val selected = _uiState.value.selectedGroupId
                         ?.let { id -> groups.firstOrNull { it.id == id } }
                         ?: groups.first()
+                    _uiState.update { it.copy(pendingGroups = pending) }
                     loadForGroup(groups, selected.id)
                 }
             }

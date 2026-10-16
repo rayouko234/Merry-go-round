@@ -295,11 +295,12 @@ class FirebaseBackend(
     override suspend fun listMyGroups(): AppResult<List<SavingsGroup>> = guard {
         val me = uid()
         val memberDocs = store.queryGroup("members", "user_id" to me)
-            .filter { str(it.data, "status") == MembershipStatus.ACTIVE.name }
+            .filter { str(it.data, "status") in setOf(MembershipStatus.ACTIVE.name, MembershipStatus.PENDING.name) }
         val groups = memberDocs.mapNotNull { doc ->
             val gid = str(doc.data, "group_id")
             val g = store.get("groups/$gid") ?: return@mapNotNull null
             toGroup(gid, g, int(g, "member_count", 1))
+                .copy(membershipStatus = MembershipStatus.fromWire(str(doc.data, "status")))
         }.sortedByDescending { it.createdAtMillis }
         AppResult.Success(groups)
     }
