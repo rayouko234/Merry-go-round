@@ -56,7 +56,10 @@ service cloud.firestore {
 
     // ---- Groups ------------------------------------------------------------
     match /groups/{gid} {
-      allow read: if isActiveMember(gid);
+      // A single group doc is fetchable by any signed-in user (needed to validate an
+      // invitation before joining; ids are unguessable). Listing stays members-only.
+      allow get: if signedIn();
+      allow list: if isActiveMember(gid);
       allow create: if signedIn()
         && request.resource.data.owner_id == request.auth.uid
         && request.resource.data.status == 'FORMING'

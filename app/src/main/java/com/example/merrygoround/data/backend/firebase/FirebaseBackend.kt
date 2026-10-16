@@ -437,7 +437,8 @@ class FirebaseBackend(
             throw AppException(AppErrorType.CONFLICT, "This invitation is no longer active")
         }
         if (long(invitation, "expires_at") < clock()) {
-            store.update("invitations/$code", mapOf("status" to "EXPIRED"))
+            // Rules only let joiners bump used_count, so marking expiry is best-effort.
+            runCatching { store.update("invitations/$code", mapOf("status" to "EXPIRED")) }
             throw AppException(AppErrorType.CONFLICT, "This invitation has expired")
         }
         val groupId = str(invitation, "group_id")
@@ -489,9 +490,14 @@ class FirebaseBackend(
         }
         val myName = str(store.get("users/$me"), "full_name")
         audit(groupId, "membership", me, "MEMBER_REQUESTED", me, """{"user":"$myName"}""")
-        notifyGroupAdmins(groupId, me, NotificationType.MEMBER_JOINED, "New member",
-            "$myName requested to join ${str(group, "name")}")
         val saved = store.get(memberPath)!!
+        val joinMessage = "$myName requested to join ${str(group, "name")}"
+        if (str(saved, "status") == MembershipStatus.ACTIVE.name) {
+            notifyGroupAdmins(groupId, me, NotificationType.MEMBER_JOINED, "New member", joinMessage)
+        } else {
+            // A pending joiner cannot list members, so notify the owner from the group doc.
+            notify(str(group, "owner_id"), NotificationType.MEMBER_JOINED, "New member", joinMessage, groupId)
+        }
         AppResult.Success(toMembership(me, saved))
     }
 
