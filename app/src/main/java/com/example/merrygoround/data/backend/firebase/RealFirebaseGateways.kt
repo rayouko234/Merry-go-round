@@ -34,6 +34,10 @@ class RealFirebaseIdentity(
     override suspend fun signOut() {
         auth.signOut()
     }
+
+    override suspend fun deleteCurrentUser() {
+        auth.currentUser?.let { await(it.delete()) }
+    }
 }
 
 /**

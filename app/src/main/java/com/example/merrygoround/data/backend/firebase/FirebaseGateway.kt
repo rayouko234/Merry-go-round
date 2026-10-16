@@ -24,6 +24,9 @@ interface FirebaseIdentity {
     suspend fun createUser(email: String, password: String): String
     suspend fun signIn(email: String, password: String): String
     suspend fun signOut()
+
+    /** Deletes the signed-in Auth user (used to roll back a failed registration). */
+    suspend fun deleteCurrentUser()
 }
 
 interface FirebaseStore {

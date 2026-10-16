@@ -93,4 +93,11 @@ class InMemoryFirebaseIdentity : FirebaseIdentity {
     override suspend fun signOut() {
         current = null
     }
+
+    override suspend fun deleteCurrentUser() {
+        val uid = current ?: return
+        uidsByEmail.entries.removeAll { it.value == uid }
+        passwordsByUid.remove(uid)
+        current = null
+    }
 }

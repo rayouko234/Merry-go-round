@@ -48,6 +48,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Collection-group query used by "my groups": a user may list only their own
+    // membership docs (the query must filter on user_id == their uid).
+    match /{path=**}/members/{uid} {
+      allow read: if signedIn() && resource.data.user_id == request.auth.uid;
+    }
+
     // ---- Groups ------------------------------------------------------------
     match /groups/{gid} {
       allow read: if isActiveMember(gid);

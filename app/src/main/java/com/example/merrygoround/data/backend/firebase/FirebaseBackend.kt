@@ -180,12 +180,6 @@ class FirebaseBackend(
         val normEmail = email.trim().lowercase()
         val normPhone = Validators.normalizePhone(phone)
 
-        if (store.query("users", "phone" to normPhone).isNotEmpty()) {
-            throw AppException(
-                AppErrorType.CONFLICT, "An account with this phone number already exists",
-                mapOf("phone" to "This phone number is already registered")
-            )
-        }
         val newUid = try {
             identity.createUser(normEmail, password)
         } catch (e: Exception) {
@@ -197,11 +191,29 @@ class FirebaseBackend(
             }
             throw e
         }
+        // Firestore rules require a signed-in user to read profiles, so the phone
+        // uniqueness check must run after the Auth user exists.
+        try {
+            if (store.query("users", "phone" to normPhone).isNotEmpty()) {
+                throw AppException(
+                    AppErrorType.CONFLICT, "An account with this phone number already exists",
+                    mapOf("phone" to "This phone number is already registered")
+                )
+            }
+        } catch (e: Exception) {
+            runCatching { identity.deleteCurrentUser() }
+            throw e
+        }
         val profile = mapOf(
             "full_name" to fullName.trim(), "email" to normEmail, "phone" to normPhone,
             "status" to "ACTIVE", "created_at" to clock()
         )
-        store.set("users/$newUid", profile)
+        try {
+            store.set("users/$newUid", profile)
+        } catch (e: Exception) {
+            runCatching { identity.deleteCurrentUser() }
+            throw e
+        }
         session.saveSession(newUid, newUid)
         return User(newUid, fullName.trim(), normEmail, normPhone, "ACTIVE", clock())
     }
