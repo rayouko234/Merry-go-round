@@ -323,7 +323,6 @@ class FirebaseBackend(
         }
 
         val groupId = Ids.newId()
-        val code = generateUniqueCode()
         val groupData = mapOf(
             "name" to name.trim(), "description" to description.trim(), "owner_id" to me,
             "currency" to "KES", "contribution_amount_minor" to contributionAmountMinor,
@@ -333,22 +332,27 @@ class FirebaseBackend(
             "payout_order_method" to payoutOrderMethod.name, "join_policy" to joinPolicy.name,
             "invitation_expiry_days" to invitationExpiryDays, "created_at" to clock()
         )
+        // Phase 1: group + owner membership.
+        store.set("groups/$groupId", groupData)
+        store.set(
+            "groups/$groupId/members/$me",
+            mapOf(
+                "group_id" to groupId, "user_id" to me, "role" to MembershipRole.OWNER.name,
+                "status" to MembershipStatus.ACTIVE.name, "payout_order" to 1,
+                "joined_at" to clock(), "invite_code" to ""
+            )
+        )
+        // Phase 2 (separate call so firestore.rules can verify via get() that THIS
+        // user owns the group before the invitation code — a batched write could
+        // not be validated that way): unique code via doc-id existence check.
+        val code = generateUniqueCode()
         store.transaction(listOf("invitations/$code")) { reads ->
             if (reads["invitations/$code"]?.isNotEmpty() == true) {
                 throw AppException(AppErrorType.UNKNOWN, "Could not generate an invitation code. Try again.")
             }
             TxOutcome(
-                groupId,
+                code,
                 listOf(
-                    TxWrite("groups/$groupId", groupData),
-                    TxWrite(
-                        "groups/$groupId/members/$me",
-                        mapOf(
-                            "group_id" to groupId, "user_id" to me, "role" to MembershipRole.OWNER.name,
-                            "status" to MembershipStatus.ACTIVE.name, "payout_order" to 1,
-                            "joined_at" to clock(), "invite_code" to code
-                        )
-                    ),
                     TxWrite(
                         "invitations/$code",
                         mapOf(
@@ -703,7 +707,7 @@ class FirebaseBackend(
             Invitation(
                 id = code, groupId = groupId, code = code,
                 expiresAtMillis = long(data, "expires_at"),
-                maxUses = Long.MAX_VALUE,
+                maxUses = Int.MAX_VALUE,
                 usedCount = int(data, "used_count"),
                 status = str(data, "status", "ACTIVE")
             )
@@ -836,7 +840,7 @@ class FirebaseBackend(
             notifyGroupAdmins(groupId, me, NotificationType.CONTRIBUTION_DUE, "Contribution reported",
                 "$myName reported a contribution for cycle $cycleNo")
         }
-        toContribution(contributionPath, outcome, str(store.get("users/$me"), "full_name"))
+        AppResult.Success(toContribution(contributionPath, outcome, str(store.get("users/$me"), "full_name")))
     }
 
     /** Admin verification. Enforces the contribution state machine. */
@@ -878,7 +882,7 @@ class FirebaseBackend(
             if (approve) "Your contribution was confirmed"
             else "Your contribution was rejected" + (if (reason.isNotBlank()) ": ${reason.take(80)}" else ""),
             groupId)
-        toContribution(path, updated, str(store.get("users/$targetUid"), "full_name"))
+        AppResult.Success(toContribution(path, updated, str(store.get("users/$targetUid"), "full_name")))
     }
 
     /** Audited reversal of a CONFIRMED contribution. History is preserved. */
@@ -915,7 +919,7 @@ class FirebaseBackend(
         audit(groupId, "contribution", contributionId, "CONTRIBUTION_REVERSED", me,
             """{"by":"${str(store.get("users/$me"), "full_name")}","reason":"${reason.take(120)}"}""")
         val targetUid = str(updated, "user_id")
-        toContribution(path, updated, str(store.get("users/$targetUid"), "full_name"))
+        AppResult.Success(toContribution(path, updated, str(store.get("users/$targetUid"), "full_name")))
     }
 
     // ---------- payouts ----------
@@ -1011,7 +1015,7 @@ class FirebaseBackend(
                     "Cycle ${int(store.get(cyclePath), "cycle_number")} payout to the recipient was marked complete",
                     groupId)
             }
-        toPayout(payoutPath, updated, str(store.get("users/${str(updated, "recipient_uid")}"), "full_name"))
+        AppResult.Success(toPayout(payoutPath, updated, str(store.get("users/${str(updated, "recipient_uid")}"), "full_name")))
     }
 
     // ---------- dashboard ----------
@@ -1223,19 +1227,69 @@ class FirebaseBackend(
         else -> eventType.lowercase().replaceFirstChar { it.uppercase() }
     }
 
-    // <<NOTIFS>>
+    override suspend fun listAuditEvents(groupId: String): AppResult<List<AuditEvent>> = guard {
+        val me = uid()
+        requireMember(groupId, me)
+        AppResult.Success(
+            store.query("groups/$groupId/audit")
+                .sortedByDescending { long(it.data, "timestamp") }
+                .map { e ->
+                    val actorUid = str(e.data, "actor_uid")
+                    AuditEvent(
+                        id = e.path.substringAfterLast("/"),
+                        groupId = groupId,
+                        entityType = str(e.data, "entity_type"),
+                        entityId = str(e.data, "entity_id"),
+                        eventType = str(e.data, "event_type"),
+                        actorUserId = actorUid.ifEmpty { null },
+                        actorName = str(store.get("users/$actorUid"), "full_name", "System"),
+                        timestampMillis = long(e.data, "timestamp"),
+                        metadata = str(e.data, "metadata")
+                    )
+                }
+        )
+    }
 
+    override suspend fun listNotifications(): AppResult<List<AppNotification>> = guard {
+        val me = uid()
+        AppResult.Success(
+            store.query("notifications/$me/items")
+                .sortedByDescending { long(it.data, "created_at") }
+                .map { n ->
+                    AppNotification(
+                        id = n.path.substringAfterLast("/"),
+                        userId = me,
+                        type = NotificationType.fromWire(str(n.data, "type")),
+                        title = str(n.data, "title"),
+                        message = str(n.data, "message"),
+                        isRead = bool(n.data, "is_read"),
+                        createdAtMillis = long(n.data, "created_at"),
+                        groupId = str(n.data, "group_id").ifEmpty { null }
+                    )
+                }
+        )
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
+    override suspend fun markNotificationsRead(): AppResult<Unit> = guard {
+        val me = uid()
+        store.query("notifications/$me/items")
+            .filter { !bool(it.data, "is_read") }
+            .forEach { store.update(it.path, mapOf("is_read" to true)) }
+        AppResult.Success(Unit)
+    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

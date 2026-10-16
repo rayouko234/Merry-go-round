@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Merry-Go-Round — Group Savings &amp; Rotating Payouts</title>
+  <meta name="description" content="Save together, build your group, receive your share. Merry-Go-Round is an Android app for trusted savings groups (chama) with transparent contribution tracking and rotating payout schedules." />
+  <style>
+    :root { --green: #167A4A; --green-light: #E8F5EE; --ink: #14181A; --muted: #5B6670; --bg: #FFFFFF; --card: #F6F7F8; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.55; }
+    header { background: var(--green); color: #fff; padding: 56px 24px 48px; text-align: center; }
+    header h1 { font-size: clamp(28px, 5vw, 40px); letter-spacing: -0.02em; }
+    header p.tag { margin-top: 10px; font-size: 18px; opacity: 0.92; }
+    main { max-width: 880px; margin: 0 auto; padding: 32px 24px 64px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 8px; }
+    .card { background: var(--card); border: 1px solid #E3E6E8; border-radius: 16px; padding: 20px; }
+    .card h3 { color: var(--green); font-size: 17px; margin-bottom: 6px; }
+    .card p { color: var(--muted); font-size: 14.5px; }
+    h2 { margin: 40px 0 12px; font-size: 22px; }
+    ul.steps { list-style: none; counter-reset: step; }
+    ul.steps li { counter-increment: step; position: relative; padding: 10px 0 10px 44px; color: var(--muted); }
+    ul.steps li::before {
+      content: counter(step); position: absolute; left: 0; top: 8px;
+      width: 30px; height: 30px; border-radius: 50%; background: var(--green-light);
+      color: var(--green); font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: 15px;
+    }
+    ul.steps li strong { color: var(--ink); }
+    .note { margin-top: 36px; background: var(--green-light); border-radius: 14px; padding: 16px 18px; font-size: 14.5px; color: var(--ink); }
+    footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px; border-top: 1px solid #E3E6E8; margin-top: 48px; }
+    code { background: var(--card); padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Merry-Go-Round</h1>
+    <p class="tag">Save Together, Build Your Group, Receive Your Share</p>
+  </header>
+  <main>
+    <div class="cards">
+      <div class="card">
+        <h3>Save Together</h3>
+        <p>Contribute a fixed KES amount every week or month with people you trust and watch the pot grow.</p>
+      </div>
+      <div class="card">
+        <h3>Build Your Group</h3>
+        <p>Create a savings group, invite members with a code, and set rules everyone can see and rely on.</p>
+      </div>
+      <div class="card">
+        <h3>Receive Your Share</h3>
+        <p>A transparent rotating payout schedule shows exactly who receives the pot, cycle by cycle.</p>
+      </div>
+    </div>
+
+    <h2>How it works</h2>
+    <ul class="steps">
+      <li><strong>Create your account</strong> — name, email, phone and a password.</li>
+      <li><strong>Start or join a group</strong> — set the contribution amount, frequency and member limit, or join with an invitation code.</li>
+      <li><strong>Save every cycle</strong> — record your contribution; the group admin verifies it before it counts as confirmed.</li>
+      <li><strong>Take your turn</strong> — payouts rotate through the agreed order, with every schedule change kept in an audit trail.</li>
+    </ul>
+
+    <div class="note">
+      <strong>Track, don’t trust blindly.</strong> This MVP tracks contributions and payout
+      schedules; it does not process payments. Self-reported entries are clearly marked
+      “Pending” until a group admin verifies them, and confirmed records are never silently
+      edited — corrections happen through audited reversals.
+    </div>
+  </main>
+  <footer>
+    Merry-Go-Round Android MVP · Firebase project <code>mt-project-ce4c0</code> · KES amounts · © 2026
+  </footer>
+</body>
+</html>

@@ -10,7 +10,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** Callback/Task → suspend bridges. */
-private suspend fun <T> await(task: com.google.gms.tasks.Task<T>): T =
+private suspend fun <T> await(task: com.google.android.gms.tasks.Task<T>): T =
     suspendCancellableCoroutine { cont ->
         task.addOnSuccessListener { cont.resume(it) }
         task.addOnFailureListener { cont.resumeWithException(it) }

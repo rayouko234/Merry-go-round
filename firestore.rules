@@ -1,0 +1,171 @@
+// =============================================================================
+// Merry-Go-Round Firestore security rules (server-side enforcement layer).
+//
+// The app's FirebaseBackend re-checks these rules client-side for good UX, but
+// THESE rules are the authoritative gate — a tampered client cannot bypass them.
+// Deploy with:  firebase deploy --only firestore:rules
+//
+// Documented MVP limitations (see docs/FIREBASE.md):
+//  * Notifications are written client-side for other users; a production app
+//    should generate them from Cloud Functions instead.
+//  * Invitation expiry is re-checked client-side; the rules verify ownership,
+//    status and expiry on join. Move full join validation to a Cloud Function
+//    for adversarial multi-tenant deployments.
+// =============================================================================
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function groupPath(gid) {
+      return /databases/$(database)/documents/groups/$(gid);
+    }
+
+    function memberPath(gid) {
+      return /databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid);
+    }
+
+    function isActiveMember(gid) {
+      return signedIn()
+        && exists(memberPath(gid))
+        && get(memberPath(gid)).data.status == 'ACTIVE';
+    }
+
+    function isAdmin(gid) {
+      return isActiveMember(gid)
+        && get(memberPath(gid)).data.role in ['OWNER', 'ADMIN'];
+    }
+
+    // ---- Users -------------------------------------------------------------
+    match /users/{uid} {
+      // Any signed-in user may read profiles (member lists show display names).
+      allow read: if signedIn();
+      // Users may only create/update their own profile.
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    // ---- Groups ------------------------------------------------------------
+    match /groups/{gid} {
+      allow read: if isActiveMember(gid);
+      allow create: if signedIn()
+        && request.resource.data.owner_id == request.auth.uid
+        && request.resource.data.status == 'FORMING'
+        && request.resource.data.contribution_amount_minor > 0
+        && request.resource.data.member_limit >= 2
+        && request.resource.data.member_limit <= 50;
+      // Admins edit settings; joiners may only bump member_count by exactly 1.
+      allow update: if isAdmin(gid)
+        || (signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['member_count'])
+            && request.resource.data.member_count == resource.data.member_count + 1);
+      allow delete: if false;
+
+      // ---- Members (doc id = uid → duplicate membership impossible) --------
+      match /members/{uid} {
+        allow read: if isActiveMember(gid) || (signedIn() && request.auth.uid == uid);
+        // Joining requires an invitation whose group_id points at THIS group and
+        // whose status/expiry match the group's join policy; the owner may always
+        // create their own membership when creating the group.
+        allow create: if signedIn()
+          && request.resource.data.user_id == request.auth.uid
+          && request.resource.data.group_id == gid
+          && (
+            (exists(groupPath(gid)) && get(groupPath(gid)).data.owner_id == request.auth.uid)
+            || (request.resource.data.invite_code is string
+                && exists(/databases/$(database)/documents/invitations/$(request.resource.data.invite_code))
+                && get(/databases/$(database)/documents/invitations/$(request.resource.data.invite_code)).data.group_id == gid
+                && get(/databases/$(database)/documents/invitations/$(request.resource.data.invite_code)).data.status == 'ACTIVE'
+                && get(/databases/$(database)/documents/invitations/$(request.resource.data.invite_code)).data.expires_at > request.time.toMillis()
+                && request.resource.data.status == (
+                     get(groupPath(gid)).data.join_policy == 'OPEN' ? 'ACTIVE' : 'PENDING'))
+          );
+        // Only group admins approve/remove/reorder members (startGroup reorders too).
+        allow update: if isAdmin(gid);
+        allow delete: if false;
+      }
+
+      // ---- Cycles (created by the admin's startGroup) ----------------------
+      match /cycles/{cycleId} {
+        allow read: if isActiveMember(gid);
+        allow create, update: if isAdmin(gid);
+        allow delete: if false;
+      }
+
+      // ---- Contributions ---------------------------------------------------
+      match /contributions/{cid} {
+        allow read: if isActiveMember(gid);
+        // Self-reported entry only: correct user, exact group amount, active
+        // cycle, PENDING/SELF_REPORTED status, create-once (idempotent doc id).
+        allow create: if signedIn()
+          && request.resource.data.user_id == request.auth.uid
+          && request.resource.data.group_id == gid
+          && request.resource.data.status == 'PENDING'
+          && request.resource.data.verification == 'SELF_REPORTED'
+          && request.resource.data.amount_minor == get(groupPath(gid)).data.contribution_amount_minor
+          && request.resource.data.cycle_id is string
+          && exists(/databases/$(database)/documents/groups/$(gid)/cycles/$(request.resource.data.cycle_id))
+          && get(/databases/$(database)/documents/groups/$(gid)/cycles/$(request.resource.data.cycle_id)).data.status == 'ACTIVE'
+          && !exists(/databases/$(database)/documents/groups/$(gid)/contributions/$(cid));
+        // Only admins transition state, and only along the state machine:
+        // PENDING → CONFIRMED|FAILED, CONFIRMED → REVERSED. Nothing is erased.
+        allow update: if isAdmin(gid)
+          && (
+            (resource.data.status == 'PENDING'
+              && request.resource.data.status in ['CONFIRMED', 'FAILED'])
+            || (resource.data.status == 'CONFIRMED'
+              && request.resource.data.status == 'REVERSED')
+          );
+        allow delete: if false;
+      }
+
+      // ---- Payouts (doc id = cycleId → one payout per cycle) ---------------
+      match /payouts/{pid} {
+        allow read: if isActiveMember(gid);
+        allow create: if isAdmin(gid); // written by startGroup
+        // Completion is an admin-only, guarded SCHEDULED → COMPLETED transition.
+        allow update: if isAdmin(gid)
+          && resource.data.status == 'SCHEDULED'
+          && request.resource.data.status == 'COMPLETED';
+        allow delete: if false;
+      }
+
+      // ---- Audit trail (append-only) ---------------------------------------
+      match /audit/{eid} {
+        allow read: if isActiveMember(gid);
+        allow create: if signedIn()
+          && request.resource.data.actor_uid == request.auth.uid;
+        allow update, delete: if false; // immutable history
+      }
+    }
+
+    // ---- Invitations (doc id = code → unique codes) -------------------------
+    match /invitations/{code} {
+      // Codes are unguessable capability tokens; any signed-in user may look up
+      // one to attempt a join (the membership rule then validates it fully).
+      allow read: if signedIn();
+      // Only the group's owner may issue codes for that group — verified with
+      // get(); createGroup therefore writes the group in a prior call.
+      allow create: if signedIn()
+        && request.resource.data.group_id is string
+        && exists(/databases/$(database)/documents/groups/$(request.resource.data.group_id))
+        && get(/databases/$(database)/documents/groups/$(request.resource.data.group_id)).data.owner_id == request.auth.uid;
+      // Joiners may bump the usage counter only.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used_count']);
+      allow delete: if signedIn()
+        && exists(/databases/$(database)/documents/groups/$(resource.data.group_id))
+        && get(/databases/$(database)/documents/groups/$(resource.data.group_id)).data.owner_id == request.auth.uid;
+    }
+
+    // ---- Notifications ------------------------------------------------------
+    match /notifications/{uid}/items/{nid} {
+      allow read, update: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn(); // see header note: move to Cloud Functions in production
+      allow delete: if false;
+    }
+  }
+}

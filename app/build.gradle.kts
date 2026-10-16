@@ -90,8 +90,12 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.security:security-crypto:1.1.0")
 
-    // Firebase (Auth + Firestore authoritative backend, Hosting for the web page)
-    implementation(platform("com.google.firebase:firebase-bom:35.0.0"))
+    // Firebase (Auth + Firestore authoritative backend, Hosting for the web page).
+    // NOTE: pinned to BOM 33.12.0 — Firebase BOM 35.x artifacts are compiled with
+    // Kotlin metadata 2.4 and cannot be read by this project's Kotlin 2.0.21
+    // toolchain (no KSP release exists for Kotlin 2.4 yet). To move to BOM 35.x,
+    // upgrade Kotlin + KSP + Room together first (see README §Firebase versions).
+    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

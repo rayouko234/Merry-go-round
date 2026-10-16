@@ -23,10 +23,10 @@ import com.example.merrygoround.domain.model.PayoutOrderMethod
  * THE INTEGRATION BOUNDARY.
  *
  * Every feature flows through this interface. Two implementations exist:
- *  - [com.example.merrygoround.data.backend.local.LocalBackend]  — Room-backed authoritative
- *    store used for development/demo and single-device use (MVP default).
- *  - [com.example.merrygoround.data.backend.remote.RemoteBackend] — Retrofit client against
- *    the documented REST contract (docs/API.md), backed by the Django service in backend/.
+ *  - [com.example.merrygoround.data.backend.firebase.FirebaseBackend] — Firebase Auth +
+ *    Cloud Firestore (default; authorization re-enforced by firestore.rules).
+ *  - [com.example.merrygoround.data.backend.local.LocalBackend] — Room-backed authoritative
+ *    store for development/demo and offline single-device use.
  *
  * The backend is the source of truth: the app never mutates balances or statuses directly.
  * All methods authorize the acting session and return typed errors.

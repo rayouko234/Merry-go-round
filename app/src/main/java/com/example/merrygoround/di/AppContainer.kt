@@ -5,6 +5,9 @@ import com.example.merrygoround.BuildConfig
 import com.example.merrygoround.core.datastore.DataStoreSessionStore
 import com.example.merrygoround.core.datastore.SessionStore
 import com.example.merrygoround.data.backend.BackendApi
+import com.example.merrygoround.data.backend.firebase.FirebaseBackend
+import com.example.merrygoround.data.backend.firebase.RealFirebaseIdentity
+import com.example.merrygoround.data.backend.firebase.RealFirebaseStore
 import com.example.merrygoround.data.backend.local.LocalBackend
 import com.example.merrygoround.data.local.AppDatabase
 import com.example.merrygoround.data.repository.ActivityRepository
@@ -15,9 +18,13 @@ import com.example.merrygoround.data.repository.GroupRepository
 /**
  * Manual dependency container (no Hilt) — the single wiring point for the app.
  *
- * Backend selection is the INTEGRATION BOUNDARY:
- *  - BuildConfig.BACKEND_MODE == "local"  (default) -> LocalBackend (Room, authoritative)
- *  - BuildConfig.BACKEND_MODE == "remote"            -> RemoteBackend (REST, docs/API.md)
+ * Backend selection (BuildConfig.BACKEND_MODE, default "firebase"):
+ *  - "firebase" → Firebase Auth + Cloud Firestore via [FirebaseBackend]
+ *                 (project mt-project-ce4c0, app/google-services.json).
+ *                 Firestore rules in firestore.rules re-enforce authorization.
+ *  - "local"    → [LocalBackend]: Room-backed authoritative store for
+ *                 development/demo without Firebase.
+ * Anything else fails fast — never silently falls back to fake data.
  */
 class AppContainer(context: Context) {
 
@@ -26,22 +33,35 @@ class AppContainer(context: Context) {
     val database: AppDatabase = AppDatabase.get(appContext)
     val sessionStore: SessionStore = DataStoreSessionStore(appContext)
 
-    val backend: BackendApi = when (BuildConfig.BACKEND_MODE) {
-        "remote" -> createRemoteBackend()
-        else -> LocalBackend.create(database, sessionStore)
+    /**
+     * Constructed lazily so processes without Firebase initialization (unit
+     * tests, early startup) never touch the SDK until a backend call happens.
+     * The real app auto-initializes Firebase via the google-services plugin's
+     * ContentProvider before the first backend call.
+     */
+    val backend: BackendApi by lazy {
+        when (BuildConfig.BACKEND_MODE) {
+            "firebase" -> try {
+                FirebaseBackend(
+                    identity = RealFirebaseIdentity(),
+                    store = RealFirebaseStore(),
+                    session = sessionStore
+                )
+            } catch (e: Exception) {
+                error(
+                    "Firebase is not initialized. Check app/google-services.json and that " +
+                        "Firebase Auth + Firestore are enabled in the console. (${e.message})"
+                )
+            }
+            "local" -> LocalBackend.create(database, sessionStore)
+            else -> error(
+                "Unknown mgr.backendMode '${BuildConfig.BACKEND_MODE}'. Use \"firebase\" (default) or \"local\"."
+            )
+        }
     }
 
-    private fun createRemoteBackend(): BackendApi =
-        // Remote wiring lives in data.backend.remote.RemoteBackend; when BACKEND_MODE
-        // is "remote" but the class is unavailable the build fails loudly rather than
-        // silently falling back — never fake data (README §Backend modes).
-        com.example.merrygoround.data.backend.remote.RemoteBackend(
-            baseUrl = BuildConfig.API_BASE_URL,
-            sessionStore = sessionStore
-        )
-
-    val authRepository = AuthRepository(backend, sessionStore)
-    val groupRepository = GroupRepository(backend)
-    val contributionRepository = ContributionRepository(backend)
-    val activityRepository = ActivityRepository(backend)
+    val authRepository by lazy { AuthRepository(backend, sessionStore) }
+    val groupRepository by lazy { GroupRepository(backend) }
+    val contributionRepository by lazy { ContributionRepository(backend) }
+    val activityRepository by lazy { ActivityRepository(backend) }
 }
